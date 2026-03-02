@@ -30,7 +30,7 @@ builds:
 
 archives:
   - id: matlock
-    builds:
+    ids:
       - matlock
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
