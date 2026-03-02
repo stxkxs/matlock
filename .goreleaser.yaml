@@ -1,0 +1,50 @@
+version: 2
+
+project_name: matlock
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: matlock
+    main: .
+    binary: matlock
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/stxkxs/matlock/cmd.Version={{ .Version }}
+      - -X github.com/stxkxs/matlock/cmd.Commit={{ .Commit }}
+      - -X github.com/stxkxs/matlock/cmd.BuildDate={{ .Date }}
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - id: matlock
+    builds:
+      - matlock
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: stxkxs
+    name: matlock
+  draft: false
+  prerelease: auto
