@@ -42,6 +42,21 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
+brews:
+  - name: matlock
+    repository:
+      owner: stxkxs
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/stxkxs/matlock"
+    description: "Multi-cloud security and cost swiss army knife — audit IAM permissions, spot cost anomalies, find orphaned resources, and flag insecure storage across AWS, GCP, and Azure"
+    license: "Apache-2.0"
+    test: |
+      system "#{bin}/matlock", "--version"
+    install: |
+      bin.install "matlock"
+
 release:
   github:
     owner: stxkxs
