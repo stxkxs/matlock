@@ -45,4 +45,5 @@ func init() {
 	rootCmd.AddCommand(networkCmd)
 	rootCmd.AddCommand(certsCmd)
 	rootCmd.AddCommand(tagsCmd)
+	rootCmd.AddCommand(probeCmd)
 }

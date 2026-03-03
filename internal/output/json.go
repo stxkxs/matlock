@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/stxkxs/matlock/internal/cloud"
+	"github.com/stxkxs/matlock/internal/investigate"
 )
 
 type iamReport struct {
@@ -93,6 +94,16 @@ func WriteCerts(w io.Writer, findings []cloud.CertFinding) error {
 // WriteTags marshals tag findings as JSON to w.
 func WriteTags(w io.Writer, findings []cloud.TagFinding) error {
 	return writeJSON(w, tagsReport{Findings: findings, Total: len(findings)})
+}
+
+// WriteProbe marshals a probe report as JSON to w.
+func WriteProbe(w io.Writer, report *investigate.Report) error {
+	return writeJSON(w, report)
+}
+
+// WriteProbeBatch marshals batch probe results as JSON to w.
+func WriteProbeBatch(w io.Writer, results []investigate.BatchResult) error {
+	return writeJSON(w, investigate.NewBatchReport(results))
 }
 
 func writeJSON(w io.Writer, v any) error {
