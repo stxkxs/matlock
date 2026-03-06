@@ -9,7 +9,9 @@ import (
 	"text/tabwriter"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stxkxs/matlock/internal/audit"
 	"github.com/stxkxs/matlock/internal/cloud"
+	"github.com/stxkxs/matlock/internal/compliance"
 	"github.com/stxkxs/matlock/internal/investigate"
 )
 
@@ -267,6 +269,132 @@ func TagFindings(w io.Writer, findings []cloud.TagFinding) {
 		)
 	}
 	tw.Flush()
+}
+
+// DriftResults renders a drift detection results table.
+func DriftResults(w io.Writer, results []cloud.DriftResult) {
+	if len(results) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no resources checked"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("STATUS"),
+		headerStyle.Render("RESOURCE"),
+		headerStyle.Render("TYPE"),
+		headerStyle.Render("ID"),
+		headerStyle.Render("DETAIL"),
+	)
+	for _, r := range results {
+		var statusStyled string
+		switch r.Status {
+		case cloud.DriftInSync:
+			statusStyled = greenStyle.Render("IN_SYNC")
+		case cloud.DriftModified:
+			statusStyled = critStyle.Render("MODIFIED")
+		case cloud.DriftDeleted:
+			statusStyled = critStyle.Render("DELETED")
+		case cloud.DriftError:
+			statusStyled = medStyle.Render("ERROR")
+		}
+
+		detail := r.Detail
+		if len(r.Fields) > 0 && detail == "" {
+			var parts []string
+			for _, f := range r.Fields {
+				parts = append(parts, fmt.Sprintf("%s: %s→%s", f.Field, f.Expected, f.Actual))
+			}
+			detail = strings.Join(parts, "; ")
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			statusStyled, r.ResourceName, r.ResourceType, truncate(r.ResourceID, 30), truncate(detail, 60),
+		)
+	}
+	tw.Flush()
+}
+
+// ComplianceReport renders a compliance evaluation table.
+func ComplianceReport(w io.Writer, report compliance.ComplianceReport) {
+	if len(report.Results) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no controls evaluated"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("STATUS"),
+		headerStyle.Render("ID"),
+		headerStyle.Render("SEVERITY"),
+		headerStyle.Render("TITLE"),
+		headerStyle.Render("DETAIL"),
+	)
+	for _, r := range report.Results {
+		var statusStyled string
+		switch r.Status {
+		case compliance.StatusPass:
+			statusStyled = greenStyle.Render("PASS")
+		case compliance.StatusFail:
+			statusStyled = critStyle.Render("FAIL")
+		default:
+			statusStyled = dimStyle.Render("N/A")
+		}
+		sev := colorSeverity(r.Control.Severity).Render(string(r.Control.Severity))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			statusStyled, r.Control.ID, sev, truncate(r.Control.Title, 55), truncate(r.Detail, 50),
+		)
+	}
+	tw.Flush()
+
+	summary := fmt.Sprintf("\n%s passed, %s failed, %s not evaluated (%d total)",
+		greenStyle.Render(fmt.Sprintf("%d", report.Summary.Passed)),
+		critStyle.Render(fmt.Sprintf("%d", report.Summary.Failed)),
+		dimStyle.Render(fmt.Sprintf("%d", report.Summary.NotEvaluated)),
+		report.Summary.Total,
+	)
+	fmt.Fprintln(w, summary)
+}
+
+// SecretFindings renders a secret findings table.
+func SecretFindings(w io.Writer, findings []cloud.SecretFinding) {
+	if len(findings) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no findings"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("SEVERITY"),
+		headerStyle.Render("TYPE"),
+		headerStyle.Render("PROVIDER"),
+		headerStyle.Render("RESOURCE"),
+		headerStyle.Render("KEY"),
+		headerStyle.Render("MATCH"),
+		headerStyle.Render("DETAIL"),
+	)
+	for _, f := range findings {
+		sev := colorSeverity(f.Severity).Render(string(f.Severity))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			sev, string(f.Type), f.Provider, f.Resource, f.Key, f.Match, truncate(f.Detail, 60),
+		)
+	}
+	tw.Flush()
+
+	var crit, high, med int
+	for _, f := range findings {
+		switch f.Severity {
+		case cloud.SeverityCritical:
+			crit++
+		case cloud.SeverityHigh:
+			high++
+		case cloud.SeverityMedium:
+			med++
+		}
+	}
+	summary := fmt.Sprintf("\n%s critical, %s high, %s medium",
+		critStyle.Render(fmt.Sprintf("%d", crit)),
+		highStyle.Render(fmt.Sprintf("%d", high)),
+		medStyle.Render(fmt.Sprintf("%d", med)),
+	)
+	fmt.Fprintln(w, summary)
 }
 
 // ProbeReport renders a full probe report with per-module detail sections.
@@ -1244,6 +1372,113 @@ func probeScoreTable(w io.Writer, score *investigate.ScoreResult) {
 			fmt.Fprintf(w, "  %s %s\n", medStyle.Render("→"), rec)
 		}
 	}
+}
+
+// AuditReport renders a unified audit report with sections per domain.
+func AuditReport(w io.Writer, report *audit.Report) {
+	fmt.Fprintf(w, "%s  completed in %s\n", headerStyle.Render("[audit]"), dimStyle.Render(report.Duration))
+
+	if len(report.IAM) > 0 {
+		fmt.Fprintf(w, "\n%s (%d findings)\n", headerStyle.Render("─── IAM"), len(report.IAM))
+		IAMFindings(w, report.IAM, 0)
+	}
+	if len(report.Storage) > 0 {
+		fmt.Fprintf(w, "\n%s (%d findings)\n", headerStyle.Render("─── STORAGE"), len(report.Storage))
+		BucketFindings(w, report.Storage)
+	}
+	if len(report.Network) > 0 {
+		fmt.Fprintf(w, "\n%s (%d findings)\n", headerStyle.Render("─── NETWORK"), len(report.Network))
+		NetworkFindings(w, report.Network)
+	}
+	if len(report.Orphans) > 0 {
+		fmt.Fprintf(w, "\n%s (%d resources)\n", headerStyle.Render("─── ORPHANS"), len(report.Orphans))
+		OrphanResources(w, report.Orphans)
+	}
+	if len(report.Certs) > 0 {
+		fmt.Fprintf(w, "\n%s (%d findings)\n", headerStyle.Render("─── CERTS"), len(report.Certs))
+		CertFindings(w, report.Certs)
+	}
+	if len(report.Tags) > 0 {
+		fmt.Fprintf(w, "\n%s (%d findings)\n", headerStyle.Render("─── TAGS"), len(report.Tags))
+		TagFindings(w, report.Tags)
+	}
+	if len(report.Secrets) > 0 {
+		fmt.Fprintf(w, "\n%s (%d findings)\n", headerStyle.Render("─── SECRETS"), len(report.Secrets))
+		SecretFindings(w, report.Secrets)
+	}
+
+	// Summary
+	s := report.Summary
+	fmt.Fprintf(w, "\n%s\n", headerStyle.Render("─── SUMMARY"))
+	fmt.Fprintf(w, "  Total findings: %d across %d domains\n", s.TotalFindings, s.DomainsRun)
+	if s.BySeverity["CRITICAL"] > 0 {
+		fmt.Fprintf(w, "  %s critical\n", critStyle.Render(fmt.Sprintf("%d", s.BySeverity["CRITICAL"])))
+	}
+	if s.BySeverity["HIGH"] > 0 {
+		fmt.Fprintf(w, "  %s high\n", highStyle.Render(fmt.Sprintf("%d", s.BySeverity["HIGH"])))
+	}
+	if s.BySeverity["MEDIUM"] > 0 {
+		fmt.Fprintf(w, "  %s medium\n", medStyle.Render(fmt.Sprintf("%d", s.BySeverity["MEDIUM"])))
+	}
+	if s.OrphanCost > 0 {
+		fmt.Fprintf(w, "  Orphan cost: %s/month\n", highStyle.Render(fmt.Sprintf("$%.2f", s.OrphanCost)))
+	}
+	if s.DomainsSkipped > 0 {
+		fmt.Fprintf(w, "  %s domains skipped\n", dimStyle.Render(fmt.Sprintf("%d", s.DomainsSkipped)))
+	}
+}
+
+// InventoryResources renders an inventory table with resource details.
+func InventoryResources(w io.Writer, resources []cloud.InventoryResource) {
+	if len(resources) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no resources found"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("TYPE"),
+		headerStyle.Render("PROVIDER"),
+		headerStyle.Render("NAME"),
+		headerStyle.Render("REGION"),
+		headerStyle.Render("STATUS"),
+		headerStyle.Render("TAGS"),
+	)
+	for _, r := range resources {
+		tagStr := formatTags(r.Tags, 50)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			r.Type, r.Provider, truncate(r.Name, 30), r.Region, r.Status, tagStr,
+		)
+	}
+	tw.Flush()
+
+	// Summary by type
+	typeCounts := make(map[string]int)
+	for _, r := range resources {
+		typeCounts[r.Type]++
+	}
+	types := make([]string, 0, len(typeCounts))
+	for t := range typeCounts {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	fmt.Fprintf(w, "\n%s: %d resources", headerStyle.Render("Total"), len(resources))
+	for _, t := range types {
+		fmt.Fprintf(w, ", %s: %d", t, typeCounts[t])
+	}
+	fmt.Fprintln(w)
+}
+
+func formatTags(tags map[string]string, maxLen int) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(tags))
+	for k, v := range tags {
+		parts = append(parts, k+"="+v)
+	}
+	sort.Strings(parts)
+	s := strings.Join(parts, ", ")
+	return truncate(s, maxLen)
 }
 
 func truncate(s string, n int) string {

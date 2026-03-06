@@ -2,7 +2,7 @@
 
 Multi-cloud security and cost swiss army knife — single binary, zero dependencies.
 
-Audit IAM permissions, spot cost anomalies, find orphaned resources, flag insecure storage, detect overly permissive firewall rules, monitor TLS certificate expiry, and enforce resource tagging across AWS, GCP, and Azure.
+Audit IAM permissions, spot cost anomalies, find orphaned resources, flag insecure storage, detect overly permissive firewall rules, monitor TLS certificate expiry, enforce resource tagging, run a unified audit across all domains, and list all cloud resources across AWS, GCP, and Azure.
 
 <!-- screenshot placeholder -->
 <!-- ![matlock iam scan output](docs/screenshots/iam-scan.png) -->
@@ -99,6 +99,7 @@ Required IAM permissions for a read-only audit role:
         "acm:DescribeCertificate",
         "rds:DescribeDBInstances",
         "lambda:ListFunctions",
+        "lambda:GetFunction",
         "lambda:ListTags"
       ],
       "Resource": "*"
@@ -420,6 +421,69 @@ matlock tags --require owner,env --output json --output-file tags.json
 
 ---
 
+### `matlock audit` — unified full-spectrum audit
+
+Runs all security and cost scans (IAM, storage, network, orphans, certs, tags, secrets) in one shot and produces a single combined report. Skip specific domains with `--skip`.
+
+```sh
+# Full audit across all auto-detected providers
+matlock audit
+
+# Skip IAM and certs domains
+matlock audit --skip iam,certs
+
+# HIGH and CRITICAL findings only, JSON output
+matlock audit --severity HIGH --output json --output-file audit.json
+
+# SARIF output for GitHub Advanced Security
+matlock audit --output sarif --output-file audit.sarif
+
+# AWS only with custom thresholds
+matlock audit --provider aws --iam-days 30 --cert-days 60 --require-tags owner,env
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--provider` | auto | Cloud providers to scan: `aws`, `gcp`, `azure` |
+| `--skip` | | Domains to skip: `iam`, `storage`, `network`, `orphans`, `certs`, `tags`, `secrets` |
+| `--severity` | `LOW` | Minimum severity to report |
+| `--output` | `table` | Output format: `table`, `json`, `sarif` |
+| `--output-file` | | Write output to file instead of stdout |
+| `--iam-days` | `90` | IAM audit log lookback period in days |
+| `--cert-days` | `90` | Certificate expiry warning threshold in days |
+| `--require-tags` | | Required tags for tag audit (comma-separated) |
+| `--concurrency` | `10` | Max parallel goroutines for IAM scanning |
+
+---
+
+### `matlock inventory` — list all cloud resources
+
+Lists all cloud resources across providers with type, region, tags, and creation date. Groups by type and region for a complete asset overview.
+
+```sh
+# List all resources across auto-detected providers
+matlock inventory
+
+# Filter to specific resource types
+matlock inventory --type ec2,s3,lambda
+
+# AWS only, JSON output
+matlock inventory --provider aws --output json --output-file inventory.json
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--provider` | auto | Cloud providers to list: `aws`, `gcp`, `azure` |
+| `--type` | all | Resource types to list (e.g. `ec2`, `s3`, `lambda`) |
+| `--output` | `table` | Output format: `table`, `json` |
+| `--output-file` | | Write output to file instead of stdout |
+
+---
+
 ## Global flags
 
 | Flag | Description |
@@ -474,6 +538,51 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
+```
+
+### GitHub Actions — full audit
+
+Run a unified audit across all domains in CI:
+
+```yaml
+name: matlock full audit
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install matlock
+        run: |
+          curl -sSL https://github.com/stxkxs/matlock/releases/latest/download/matlock_Linux_amd64.tar.gz \
+            | tar -xz matlock
+          sudo mv matlock /usr/local/bin/
+
+      - name: Run full audit
+        env:
+          AWS_ROLE_ARN: ${{ secrets.MATLOCK_ROLE_ARN }}
+          AWS_REGION: us-east-1
+        run: |
+          matlock audit \
+            --provider aws \
+            --severity HIGH \
+            --output sarif \
+            --output-file audit.sarif \
+            --quiet
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: audit.sarif
 ```
 
 ### GitLab CI — JSON report artifact

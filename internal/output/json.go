@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"io"
 
+	"github.com/stxkxs/matlock/internal/audit"
 	"github.com/stxkxs/matlock/internal/cloud"
+	"github.com/stxkxs/matlock/internal/compliance"
 	"github.com/stxkxs/matlock/internal/investigate"
 )
 
@@ -96,6 +98,31 @@ func WriteTags(w io.Writer, findings []cloud.TagFinding) error {
 	return writeJSON(w, tagsReport{Findings: findings, Total: len(findings)})
 }
 
+type secretsReport struct {
+	Findings []cloud.SecretFinding `json:"findings"`
+	Total    int                   `json:"total"`
+}
+
+// WriteSecrets marshals secret findings as JSON to w.
+func WriteSecrets(w io.Writer, findings []cloud.SecretFinding) error {
+	return writeJSON(w, secretsReport{Findings: findings, Total: len(findings)})
+}
+
+type driftReport struct {
+	Results []cloud.DriftResult `json:"results"`
+	Total   int                 `json:"total"`
+}
+
+// WriteDrift marshals drift results as JSON to w.
+func WriteDrift(w io.Writer, results []cloud.DriftResult) error {
+	return writeJSON(w, driftReport{Results: results, Total: len(results)})
+}
+
+// WriteCompliance marshals a compliance report as JSON to w.
+func WriteCompliance(w io.Writer, report compliance.ComplianceReport) error {
+	return writeJSON(w, report)
+}
+
 // WriteProbe marshals a probe report as JSON to w.
 func WriteProbe(w io.Writer, report *investigate.Report) error {
 	return writeJSON(w, report)
@@ -104,6 +131,24 @@ func WriteProbe(w io.Writer, report *investigate.Report) error {
 // WriteProbeBatch marshals batch probe results as JSON to w.
 func WriteProbeBatch(w io.Writer, results []investigate.BatchResult) error {
 	return writeJSON(w, investigate.NewBatchReport(results))
+}
+
+// WriteAudit marshals a full audit report as JSON to w.
+func WriteAudit(w io.Writer, report *audit.Report) error {
+	return writeJSON(w, report)
+}
+
+type inventoryReport struct {
+	Resources []cloud.InventoryResource `json:"resources"`
+	Total     int                       `json:"total"`
+}
+
+// WriteInventory marshals inventory resources as JSON to w.
+func WriteInventory(w io.Writer, resources []cloud.InventoryResource) error {
+	return writeJSON(w, inventoryReport{
+		Resources: resources,
+		Total:     len(resources),
+	})
 }
 
 func writeJSON(w io.Writer, v any) error {
