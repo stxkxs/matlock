@@ -38,6 +38,7 @@ func Execute() {
 func init() {
 	rootCmd.Version = fmt.Sprintf("%s (commit %s, built %s)", Version, Commit, BuildDate)
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress progress and summary output to stderr")
+	rootCmd.AddCommand(auditCmd)
 	rootCmd.AddCommand(iamCmd)
 	rootCmd.AddCommand(costCmd)
 	rootCmd.AddCommand(orphansCmd)
@@ -49,4 +50,5 @@ func init() {
 	rootCmd.AddCommand(secretsCmd)
 	rootCmd.AddCommand(complianceCmd)
 	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(inventoryCmd)
 }

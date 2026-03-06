@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
+	"github.com/stxkxs/matlock/internal/audit"
 	"github.com/stxkxs/matlock/internal/cloud"
 	"github.com/stxkxs/matlock/internal/compliance"
 	"github.com/stxkxs/matlock/internal/investigate"
@@ -130,6 +131,24 @@ func WriteProbe(w io.Writer, report *investigate.Report) error {
 // WriteProbeBatch marshals batch probe results as JSON to w.
 func WriteProbeBatch(w io.Writer, results []investigate.BatchResult) error {
 	return writeJSON(w, investigate.NewBatchReport(results))
+}
+
+// WriteAudit marshals a full audit report as JSON to w.
+func WriteAudit(w io.Writer, report *audit.Report) error {
+	return writeJSON(w, report)
+}
+
+type inventoryReport struct {
+	Resources []cloud.InventoryResource `json:"resources"`
+	Total     int                       `json:"total"`
+}
+
+// WriteInventory marshals inventory resources as JSON to w.
+func WriteInventory(w io.Writer, resources []cloud.InventoryResource) error {
+	return writeJSON(w, inventoryReport{
+		Resources: resources,
+		Total:     len(resources),
+	})
 }
 
 func writeJSON(w io.Writer, v any) error {
