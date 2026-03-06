@@ -116,6 +116,38 @@ func WriteStorageSARIF(w io.Writer, findings []cloud.BucketFinding, version stri
 	return enc.Encode(log)
 }
 
+// WriteSecretsSARIF writes secret findings in SARIF 2.1.0 format.
+func WriteSecretsSARIF(w io.Writer, findings []cloud.SecretFinding, version string) error {
+	rules := buildSecretsRules()
+	results := make([]sarifResult, 0, len(findings))
+	for _, f := range findings {
+		results = append(results, sarifResult{
+			RuleID:  string(f.Type),
+			Level:   sarifLevel(f.Severity),
+			Message: sarifMessage{Text: f.Detail},
+			Kind:    "open",
+		})
+	}
+
+	log := sarifLog{
+		Version: "2.1.0",
+		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+		Runs: []sarifRun{{
+			Tool: sarifTool{Driver: sarifDriver{
+				Name:           "matlock",
+				Version:        version,
+				InformationURI: "https://github.com/stxkxs/matlock",
+				Rules:          rules,
+			}},
+			Results: results,
+		}},
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(log)
+}
+
 func sarifLevel(s cloud.Severity) string {
 	switch s {
 	case cloud.SeverityCritical, cloud.SeverityHigh:
@@ -138,6 +170,33 @@ func buildStorageRules() []sarifRule {
 		{cloud.BucketNoVersioning, "NoVersioning", "warning"},
 		{cloud.BucketNoLogging, "NoLogging", "note"},
 		{cloud.BucketPublicACL, "PublicACL", "error"},
+	}
+	var rules []sarifRule
+	for _, t := range types {
+		rules = append(rules, sarifRule{
+			ID:               string(t.id),
+			Name:             t.name,
+			ShortDescription: sarifMessage{Text: t.name},
+			DefaultConfig:    sarifRuleConfig{Level: t.level},
+		})
+	}
+	return rules
+}
+
+func buildSecretsRules() []sarifRule {
+	types := []struct {
+		id    cloud.SecretFindingType
+		name  string
+		level string
+	}{
+		{cloud.SecretAWSAccessKey, "AWSAccessKey", "error"},
+		{cloud.SecretGCPServiceAccountKey, "GCPServiceAccountKey", "error"},
+		{cloud.SecretPrivateKey, "PrivateKey", "error"},
+		{cloud.SecretAzureConnectionString, "AzureConnectionString", "error"},
+		{cloud.SecretPassword, "Password", "error"},
+		{cloud.SecretAPIKey, "APIKey", "error"},
+		{cloud.SecretBearerToken, "BearerToken", "error"},
+		{cloud.SecretGenericSecret, "GenericSecret", "warning"},
 	}
 	var rules []sarifRule
 	for _, t := range types {

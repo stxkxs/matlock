@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/stxkxs/matlock/internal/cloud"
+	"github.com/stxkxs/matlock/internal/compliance"
 	"github.com/stxkxs/matlock/internal/investigate"
 )
 
@@ -94,6 +95,31 @@ func WriteCerts(w io.Writer, findings []cloud.CertFinding) error {
 // WriteTags marshals tag findings as JSON to w.
 func WriteTags(w io.Writer, findings []cloud.TagFinding) error {
 	return writeJSON(w, tagsReport{Findings: findings, Total: len(findings)})
+}
+
+type secretsReport struct {
+	Findings []cloud.SecretFinding `json:"findings"`
+	Total    int                   `json:"total"`
+}
+
+// WriteSecrets marshals secret findings as JSON to w.
+func WriteSecrets(w io.Writer, findings []cloud.SecretFinding) error {
+	return writeJSON(w, secretsReport{Findings: findings, Total: len(findings)})
+}
+
+type driftReport struct {
+	Results []cloud.DriftResult `json:"results"`
+	Total   int                 `json:"total"`
+}
+
+// WriteDrift marshals drift results as JSON to w.
+func WriteDrift(w io.Writer, results []cloud.DriftResult) error {
+	return writeJSON(w, driftReport{Results: results, Total: len(results)})
+}
+
+// WriteCompliance marshals a compliance report as JSON to w.
+func WriteCompliance(w io.Writer, report compliance.ComplianceReport) error {
+	return writeJSON(w, report)
 }
 
 // WriteProbe marshals a probe report as JSON to w.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stxkxs/matlock/internal/cloud"
+	"github.com/stxkxs/matlock/internal/compliance"
 	"github.com/stxkxs/matlock/internal/investigate"
 )
 
@@ -267,6 +268,132 @@ func TagFindings(w io.Writer, findings []cloud.TagFinding) {
 		)
 	}
 	tw.Flush()
+}
+
+// DriftResults renders a drift detection results table.
+func DriftResults(w io.Writer, results []cloud.DriftResult) {
+	if len(results) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no resources checked"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("STATUS"),
+		headerStyle.Render("RESOURCE"),
+		headerStyle.Render("TYPE"),
+		headerStyle.Render("ID"),
+		headerStyle.Render("DETAIL"),
+	)
+	for _, r := range results {
+		var statusStyled string
+		switch r.Status {
+		case cloud.DriftInSync:
+			statusStyled = greenStyle.Render("IN_SYNC")
+		case cloud.DriftModified:
+			statusStyled = critStyle.Render("MODIFIED")
+		case cloud.DriftDeleted:
+			statusStyled = critStyle.Render("DELETED")
+		case cloud.DriftError:
+			statusStyled = medStyle.Render("ERROR")
+		}
+
+		detail := r.Detail
+		if len(r.Fields) > 0 && detail == "" {
+			var parts []string
+			for _, f := range r.Fields {
+				parts = append(parts, fmt.Sprintf("%s: %s→%s", f.Field, f.Expected, f.Actual))
+			}
+			detail = strings.Join(parts, "; ")
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			statusStyled, r.ResourceName, r.ResourceType, truncate(r.ResourceID, 30), truncate(detail, 60),
+		)
+	}
+	tw.Flush()
+}
+
+// ComplianceReport renders a compliance evaluation table.
+func ComplianceReport(w io.Writer, report compliance.ComplianceReport) {
+	if len(report.Results) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no controls evaluated"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("STATUS"),
+		headerStyle.Render("ID"),
+		headerStyle.Render("SEVERITY"),
+		headerStyle.Render("TITLE"),
+		headerStyle.Render("DETAIL"),
+	)
+	for _, r := range report.Results {
+		var statusStyled string
+		switch r.Status {
+		case compliance.StatusPass:
+			statusStyled = greenStyle.Render("PASS")
+		case compliance.StatusFail:
+			statusStyled = critStyle.Render("FAIL")
+		default:
+			statusStyled = dimStyle.Render("N/A")
+		}
+		sev := colorSeverity(r.Control.Severity).Render(string(r.Control.Severity))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			statusStyled, r.Control.ID, sev, truncate(r.Control.Title, 55), truncate(r.Detail, 50),
+		)
+	}
+	tw.Flush()
+
+	summary := fmt.Sprintf("\n%s passed, %s failed, %s not evaluated (%d total)",
+		greenStyle.Render(fmt.Sprintf("%d", report.Summary.Passed)),
+		critStyle.Render(fmt.Sprintf("%d", report.Summary.Failed)),
+		dimStyle.Render(fmt.Sprintf("%d", report.Summary.NotEvaluated)),
+		report.Summary.Total,
+	)
+	fmt.Fprintln(w, summary)
+}
+
+// SecretFindings renders a secret findings table.
+func SecretFindings(w io.Writer, findings []cloud.SecretFinding) {
+	if len(findings) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no findings"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("SEVERITY"),
+		headerStyle.Render("TYPE"),
+		headerStyle.Render("PROVIDER"),
+		headerStyle.Render("RESOURCE"),
+		headerStyle.Render("KEY"),
+		headerStyle.Render("MATCH"),
+		headerStyle.Render("DETAIL"),
+	)
+	for _, f := range findings {
+		sev := colorSeverity(f.Severity).Render(string(f.Severity))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			sev, string(f.Type), f.Provider, f.Resource, f.Key, f.Match, truncate(f.Detail, 60),
+		)
+	}
+	tw.Flush()
+
+	var crit, high, med int
+	for _, f := range findings {
+		switch f.Severity {
+		case cloud.SeverityCritical:
+			crit++
+		case cloud.SeverityHigh:
+			high++
+		case cloud.SeverityMedium:
+			med++
+		}
+	}
+	summary := fmt.Sprintf("\n%s critical, %s high, %s medium",
+		critStyle.Render(fmt.Sprintf("%d", crit)),
+		highStyle.Render(fmt.Sprintf("%d", high)),
+		medStyle.Render(fmt.Sprintf("%d", med)),
+	)
+	fmt.Fprintln(w, summary)
 }
 
 // ProbeReport renders a full probe report with per-module detail sections.

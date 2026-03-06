@@ -46,4 +46,7 @@ func init() {
 	rootCmd.AddCommand(certsCmd)
 	rootCmd.AddCommand(tagsCmd)
 	rootCmd.AddCommand(probeCmd)
+	rootCmd.AddCommand(secretsCmd)
+	rootCmd.AddCommand(complianceCmd)
+	rootCmd.AddCommand(driftCmd)
 }
