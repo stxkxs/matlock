@@ -82,6 +82,7 @@ Each interface is defined in `internal/cloud/`:
 | `storage.go` | `StorageProvider` | `AuditStorage` |
 | `cost.go` | `CostProvider` | `GetCostDiff` |
 | `inventory.go` | `InventoryProvider` | `ListResources` |
+| `quota.go` | `QuotaProvider` | `ListQuotas` |
 
 Each method receives a `context.Context` as its first argument. Wrap all errors with context:
 
@@ -120,7 +121,7 @@ func buildAllOrphansProviders(ctx context.Context) []cloud.OrphansProvider {
 }
 ```
 
-Do the same in `buildAllIAMProviders`, `buildAllStorageProviders`, `buildAllCostProviders`, and `buildAllInventoryProviders`.
+Do the same in `buildAllIAMProviders`, `buildAllStorageProviders`, `buildAllCostProviders`, `buildAllInventoryProviders`, and `buildAllQuotaProviders`.
 
 ### 5. Write tests
 

@@ -1487,3 +1487,105 @@ func truncate(s string, n int) string {
 	}
 	return s[:n-3] + "..."
 }
+
+// QuotaUsages renders a quota utilization table.
+func QuotaUsages(w io.Writer, quotas []cloud.QuotaUsage) {
+	if len(quotas) == 0 {
+		fmt.Fprintln(w, dimStyle.Render("no quotas found"))
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("PROVIDER"),
+		headerStyle.Render("SERVICE"),
+		headerStyle.Render("QUOTA"),
+		headerStyle.Render("USED"),
+		headerStyle.Render("LIMIT"),
+		headerStyle.Render("UTILIZATION"),
+	)
+	for _, q := range quotas {
+		pct := fmt.Sprintf("%.1f%%", q.Utilization)
+		var pctStyled string
+		switch {
+		case q.Utilization >= 80:
+			pctStyled = critStyle.Render(pct)
+		case q.Utilization >= 50:
+			pctStyled = medStyle.Render(pct)
+		default:
+			pctStyled = greenStyle.Render(pct)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%.0f\t%.0f\t%s\n",
+			q.Provider, q.Service, q.QuotaName,
+			q.Used, q.Limit, pctStyled,
+		)
+	}
+	tw.Flush()
+}
+
+// CompareTable renders a diff comparison table.
+func CompareTable(w io.Writer, result CompareResult) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		headerStyle.Render("STATUS"),
+		headerStyle.Render("DOMAIN"),
+		headerStyle.Render("TYPE"),
+		headerStyle.Render("RESOURCE"),
+		headerStyle.Render("DETAIL"),
+	)
+
+	for _, f := range result.New {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			critStyle.Render("+NEW"),
+			f.Domain, f.Type, truncate(f.ResourceID, 40), truncate(f.Detail, 60),
+		)
+	}
+	for _, f := range result.Resolved {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			greenStyle.Render("-RESOLVED"),
+			f.Domain, f.Type, truncate(f.ResourceID, 40), truncate(f.Detail, 60),
+		)
+	}
+	for _, f := range result.Unchanged {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			dimStyle.Render("=UNCHANGED"),
+			f.Domain, f.Type, truncate(f.ResourceID, 40), truncate(f.Detail, 60),
+		)
+	}
+	tw.Flush()
+
+	fmt.Fprintf(w, "\n%s new, %s resolved, %s unchanged\n",
+		critStyle.Render(fmt.Sprintf("%d", len(result.New))),
+		greenStyle.Render(fmt.Sprintf("%d", len(result.Resolved))),
+		dimStyle.Render(fmt.Sprintf("%d", len(result.Unchanged))),
+	)
+}
+
+// CompareResult mirrors compare.DiffResult to avoid import cycle.
+type CompareResult struct {
+	New       []CompareFindingType
+	Resolved  []CompareFindingType
+	Unchanged []CompareFindingType
+}
+
+// CompareFindingType mirrors compare.NormalizedFinding to avoid import cycle.
+type CompareFindingType struct {
+	Domain     string
+	Provider   string
+	Type       string
+	ResourceID string
+	Detail     string
+	Severity   string
+}
+
+// NewCompareResult creates a CompareResult from raw data.
+func NewCompareResult(newF, resolved, unchanged []CompareFindingType) CompareResult {
+	return CompareResult{New: newF, Resolved: resolved, Unchanged: unchanged}
+}
+
+// NewCompareFinding creates a CompareFindingType.
+func NewCompareFinding(domain, provider, typ, resourceID, detail, severity string) CompareFindingType {
+	return CompareFindingType{
+		Domain: domain, Provider: provider, Type: typ,
+		ResourceID: resourceID, Detail: detail, Severity: severity,
+	}
+}

@@ -51,4 +51,8 @@ func init() {
 	rootCmd.AddCommand(complianceCmd)
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(inventoryCmd)
+	rootCmd.AddCommand(quotaCmd)
+	rootCmd.AddCommand(baselineCmd)
+	rootCmd.AddCommand(compareCmd)
+	rootCmd.AddCommand(reportCmd)
 }

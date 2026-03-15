@@ -151,6 +151,81 @@ func WriteInventory(w io.Writer, resources []cloud.InventoryResource) error {
 	})
 }
 
+type quotaReport struct {
+	Quotas   []cloud.QuotaUsage `json:"quotas"`
+	Total    int                `json:"total"`
+	Critical int                `json:"critical"`
+	High     int                `json:"high"`
+	Medium   int                `json:"medium"`
+}
+
+// WriteQuotas marshals quota usage data as JSON to w.
+func WriteQuotas(w io.Writer, quotas []cloud.QuotaUsage) error {
+	var crit, high, med int
+	for _, q := range quotas {
+		switch cloud.QuotaSeverity(q.Utilization) {
+		case cloud.SeverityCritical:
+			crit++
+		case cloud.SeverityHigh:
+			high++
+		case cloud.SeverityMedium:
+			med++
+		}
+	}
+	return writeJSON(w, quotaReport{
+		Quotas:   quotas,
+		Total:    len(quotas),
+		Critical: crit,
+		High:     high,
+		Medium:   med,
+	})
+}
+
+type compareReport struct {
+	New       []CompareFindingJSONType `json:"new"`
+	Resolved  []CompareFindingJSONType `json:"resolved"`
+	Unchanged []CompareFindingJSONType `json:"unchanged"`
+	Summary   compareSummary       `json:"summary"`
+}
+
+// CompareFindingJSONType is a finding for JSON comparison output.
+type CompareFindingJSONType struct {
+	Domain     string `json:"domain"`
+	Provider   string `json:"provider"`
+	Type       string `json:"type"`
+	ResourceID string `json:"resource_id"`
+	Detail     string `json:"detail"`
+	Severity   string `json:"severity"`
+}
+
+type compareSummary struct {
+	New       int `json:"new"`
+	Resolved  int `json:"resolved"`
+	Unchanged int `json:"unchanged"`
+}
+
+// WriteCompare marshals comparison results as JSON to w.
+func WriteCompare(w io.Writer, newF, resolved, unchanged []CompareFindingJSONType) error {
+	return writeJSON(w, compareReport{
+		New:       newF,
+		Resolved:  resolved,
+		Unchanged: unchanged,
+		Summary: compareSummary{
+			New:       len(newF),
+			Resolved:  len(resolved),
+			Unchanged: len(unchanged),
+		},
+	})
+}
+
+// CompareFindingJSON creates a CompareFindingJSONType.
+func CompareFindingJSON(domain, provider, typ, resourceID, detail, severity string) CompareFindingJSONType {
+	return CompareFindingJSONType{
+		Domain: domain, Provider: provider, Type: typ,
+		ResourceID: resourceID, Detail: detail, Severity: severity,
+	}
+}
+
 func writeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
