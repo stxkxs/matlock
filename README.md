@@ -2,7 +2,7 @@
 
 Multi-cloud security and cost swiss army knife — single binary, zero dependencies.
 
-Audit IAM permissions, spot cost anomalies, find orphaned resources, flag insecure storage, detect overly permissive firewall rules, monitor TLS certificate expiry, enforce resource tagging, run a unified audit across all domains, and list all cloud resources across AWS, GCP, and Azure.
+Audit IAM permissions, spot cost anomalies, find orphaned resources, flag insecure storage, detect overly permissive firewall rules, monitor TLS certificate expiry, enforce resource tagging, check service quota utilization, save and compare scan baselines, generate HTML reports, and more — across AWS, GCP, and Azure.
 
 <!-- screenshot placeholder -->
 <!-- ![matlock iam scan output](docs/screenshots/iam-scan.png) -->
@@ -100,7 +100,11 @@ Required IAM permissions for a read-only audit role:
         "rds:DescribeDBInstances",
         "lambda:ListFunctions",
         "lambda:GetFunction",
-        "lambda:ListTags"
+        "lambda:ListTags",
+        "lambda:GetAccountSettings",
+        "iam:GetAccountSummary",
+        "servicequotas:GetServiceQuota",
+        "servicequotas:ListServiceQuotas"
       ],
       "Resource": "*"
     }
@@ -129,6 +133,7 @@ Required IAM roles for the service account:
 - `roles/storage.objectViewer`
 - `roles/compute.viewer`
 - `roles/certificatemanager.viewer` (for `matlock certs`)
+- `compute.projects.get` permission (for `matlock quota`)
 
 ### Azure
 
@@ -481,6 +486,142 @@ matlock inventory --provider aws --output json --output-file inventory.json
 | `--type` | all | Resource types to list (e.g. `ec2`, `s3`, `lambda`) |
 | `--output` | `table` | Output format: `table`, `json` |
 | `--output-file` | | Write output to file instead of stdout |
+
+---
+
+### `matlock quota` — service quota utilization
+
+Checks service quota usage across cloud providers to prevent outages from silently hitting limits. Reports IAM, EC2, S3, Lambda, RDS quotas (AWS), compute project quotas (GCP), and compute/network/storage quotas (Azure).
+
+```sh
+# All providers, all quotas
+matlock quota
+
+# Only quotas above 50% utilization
+matlock quota --threshold 50
+
+# AWS only, JSON output
+matlock quota --provider aws --output json --output-file quotas.json
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--provider` | auto | Cloud providers to check: `aws`, `gcp`, `azure` |
+| `--threshold` | `0` | Minimum utilization percentage to report |
+| `--output` | `table` | Output format: `table`, `json` |
+| `--output-file` | | Write output to file instead of stdout |
+
+Utilization is color-coded: green (<50%), yellow (50-80%), red (>80%).
+
+---
+
+### `matlock baseline` — save and manage scan baselines
+
+Save any scan report as a named baseline for later comparison with `matlock compare`.
+
+```sh
+# Save a baseline from a scan report
+matlock iam scan --output json --output-file scan.json
+matlock baseline save --from scan.json --name pre-deploy
+
+# List saved baselines
+matlock baseline list
+
+# Delete a baseline
+matlock baseline delete --name old-scan
+```
+
+Baselines are stored in `~/.matlock/baselines/`.
+
+**Subcommands**
+
+| Subcommand | Description |
+|------------|-------------|
+| `baseline save --from <file> --name <name>` | Save a report as a named baseline |
+| `baseline list` | List all saved baselines with dates |
+| `baseline delete --name <name>` | Delete a saved baseline |
+
+---
+
+### `matlock compare` — diff two scan reports
+
+Compares two scan reports (or a saved baseline against a current report) and classifies each finding as new, resolved, or unchanged.
+
+```sh
+# Compare a saved baseline against a new scan
+matlock compare --baseline pre-deploy --current scan-after.json
+
+# Compare two report files directly
+matlock compare --from old-report.json --to new-report.json
+
+# JSON output
+matlock compare --from old.json --to new.json --output json
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--baseline` | | Name of saved baseline to compare against |
+| `--current` | | Path to current report JSON file |
+| `--from` | | Path to older report JSON file |
+| `--to` | | Path to newer report JSON file |
+| `--output` | `table` | Output format: `table`, `json` |
+| `--output-file` | | Write output to file instead of stdout |
+
+Use `--baseline` + `--current` or `--from` + `--to` (not both). Supports all report types: audit, IAM, storage, network, orphans, certs, tags, secrets, quotas.
+
+**End-to-end workflow**
+
+```sh
+# Before a deploy: scan and save a baseline
+matlock audit --output json --output-file audit.json
+matlock baseline save --from audit.json --name pre-deploy-v2
+
+# After the deploy: scan again and compare
+matlock audit --output json --output-file audit-after.json
+matlock compare --baseline pre-deploy-v2 --current audit-after.json
+
+# Output shows:
+#   +NEW        findings introduced since the baseline
+#   -RESOLVED   findings that no longer appear
+#   =UNCHANGED  findings present in both
+```
+
+You can also skip baselines and compare any two JSON files directly:
+
+```sh
+matlock compare --from monday-scan.json --to friday-scan.json --output json
+```
+
+---
+
+### `matlock report` — generate HTML executive summary
+
+Generates a standalone, self-contained HTML report from any JSON scan output. Includes summary cards, severity breakdown, domain-specific tables, and client-side table sorting. Supports light and dark mode via `prefers-color-scheme`.
+
+```sh
+# Generate from an audit report
+matlock audit --output json --output-file audit.json
+matlock report --from audit.json --out report.html --open
+
+# Generate from any scan report
+matlock report --from iam-scan.json --out iam-report.html
+
+# Explicit type override
+matlock report --from data.json --type orphans --out orphans.html
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from` | (required) | Path to scan report JSON file |
+| `--out` | `report.html` | Output HTML file path |
+| `--type` | `auto` | Report type: `auto`, `audit`, `iam`, `storage`, `network`, `orphans`, `certs`, `tags`, `secrets`, `cost`, `quotas` |
+| `--open` | `false` | Open the report in the default browser after generation |
 
 ---
 
