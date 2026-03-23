@@ -4,3 +4,5 @@ dist/
 *.out
 coverage.txt
 .task/
+CLAUDE.local.md
+.claude/settings.local.json
