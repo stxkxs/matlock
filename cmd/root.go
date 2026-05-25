@@ -59,4 +59,5 @@ func init() {
 	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(k8sCmd)
 	rootCmd.AddCommand(remediateCmd)
+	rootCmd.AddCommand(lambdaCmd)
 }

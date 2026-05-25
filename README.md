@@ -458,6 +458,37 @@ matlock tags --require owner,env --output json --output-file tags.json
 
 ---
 
+### `matlock lambda audit` — Lambda resource-policy exposure (AWS)
+
+Inspects each AWS Lambda function's resource-based policy (`lambda:GetPolicy`) for patterns that grant invoke permission too widely. This is the *resource-based* counterpart to `matlock iam scan` — that one checks what identities can do *from* the inside; this one checks who can invoke *into* the function from the outside.
+
+Severity rules:
+- **CRITICAL** — `Principal: "*"` or `Principal: {"AWS": "*"}` (anyone can invoke)
+- **HIGH** — cross-account principal in `Principal: {"AWS": "arn:..."}` (a different account is allowed to invoke)
+- **HIGH** — `Principal: {"Service": "..."}` without `aws:SourceAccount` or `aws:SourceArn` condition (confused-deputy risk)
+- **HIGH** — `Action: "*"` or `Action: "lambda:*"` in any allow statement
+
+Functions without a resource policy are silently skipped — they're only reachable via identity-based IAM, which the IAM scan already covers.
+
+```sh
+# Audit all Lambda resource policies in the current AWS account
+matlock lambda audit
+
+# CRITICAL only, JSON output
+matlock lambda audit --severity CRITICAL --output json --output-file lambda.json
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--provider` | `aws` | Currently only `aws` is supported |
+| `--severity` | `LOW` | Minimum severity to report |
+| `--output` | `table` | Output format: `table`, `json` |
+| `--output-file` | | Write output to file instead of stdout |
+
+---
+
 ### `matlock k8s rbac` — over-privileged Kubernetes RBAC
 
 Scans cluster-scoped ClusterRoles and ClusterRoleBindings for the patterns that produce real incidents: wildcard verbs/resources, dangerous verbs (create/update/patch/delete) on wildcard resources, and bindings to broad subject groups (`system:authenticated`, `system:unauthenticated`, `system:masters`). Built-in default roles (`cluster-admin`, `admin`, `edit`, `view`, `system:*`, `kubeadm:*`) are skipped so the output focuses on user-introduced risk.

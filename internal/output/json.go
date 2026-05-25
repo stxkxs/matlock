@@ -137,6 +137,16 @@ func WriteK8sFindings(w io.Writer, findings []cloud.K8sFinding) error {
 	return writeJSON(w, k8sReport{Findings: findings, Total: len(findings)})
 }
 
+type lambdaPolicyReport struct {
+	Findings []cloud.LambdaPolicyFinding `json:"findings"`
+	Total    int                         `json:"total"`
+}
+
+// WriteLambdaPolicy marshals Lambda resource-policy findings as JSON to w.
+func WriteLambdaPolicy(w io.Writer, findings []cloud.LambdaPolicyFinding) error {
+	return writeJSON(w, lambdaPolicyReport{Findings: findings, Total: len(findings)})
+}
+
 type inventoryReport struct {
 	Resources []cloud.InventoryResource `json:"resources"`
 	Total     int                       `json:"total"`

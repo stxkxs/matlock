@@ -129,3 +129,36 @@ type K8sRBACProvider interface {
 	KubernetesProvider
 	ScanRBAC(ctx context.Context) ([]K8sFinding, error)
 }
+
+// LambdaPolicyFindingType classifies resource-based policy observations on
+// serverless functions.
+type LambdaPolicyFindingType string
+
+const (
+	LambdaPublicInvoke   LambdaPolicyFindingType = "PUBLIC_INVOKE"
+	LambdaCrossAccount   LambdaPolicyFindingType = "CROSS_ACCOUNT_INVOKE"
+	LambdaConfusedDeputy LambdaPolicyFindingType = "CONFUSED_DEPUTY_RISK"
+	LambdaWildcardAction LambdaPolicyFindingType = "WILDCARD_ACTION"
+)
+
+// LambdaPolicyFinding is a security observation about a Lambda function's
+// resource-based policy (lambda:GetPolicy output, separate from the
+// identity-based IAM analysis performed by IAMProvider).
+type LambdaPolicyFinding struct {
+	Severity     Severity                `json:"severity"`
+	Type         LambdaPolicyFindingType `json:"type"`
+	Provider     string                  `json:"provider"`
+	FunctionName string                  `json:"function_name"`
+	FunctionArn  string                  `json:"function_arn"`
+	Region       string                  `json:"region"`
+	StatementID  string                  `json:"statement_id,omitempty"`
+	Detail       string                  `json:"detail"`
+	Remediation  string                  `json:"remediation"`
+}
+
+// LambdaPolicyProvider audits Lambda function resource-based policies for
+// public-invoke, cross-account-invoke, and confused-deputy patterns.
+type LambdaPolicyProvider interface {
+	Provider
+	AuditLambdaPolicies(ctx context.Context) ([]LambdaPolicyFinding, error)
+}
