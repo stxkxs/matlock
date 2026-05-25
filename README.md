@@ -426,6 +426,37 @@ matlock tags --require owner,env --output json --output-file tags.json
 
 ---
 
+### `matlock k8s rbac` — over-privileged Kubernetes RBAC
+
+Scans cluster-scoped ClusterRoles and ClusterRoleBindings for the patterns that produce real incidents: wildcard verbs/resources, dangerous verbs (create/update/patch/delete) on wildcard resources, and bindings to broad subject groups (`system:authenticated`, `system:unauthenticated`, `system:masters`). Built-in default roles (`cluster-admin`, `admin`, `edit`, `view`, `system:*`, `kubeadm:*`) are skipped so the output focuses on user-introduced risk.
+
+Connection uses the standard kubeconfig chain: `--kubeconfig` flag → `$KUBECONFIG` → `~/.kube/config` → in-cluster service-account token.
+
+```sh
+# Scan the cluster of the current kubeconfig context
+matlock k8s rbac
+
+# Use a specific kubeconfig
+matlock k8s rbac --kubeconfig /path/to/kubeconfig
+
+# JSON output for CI
+matlock k8s rbac --output json --output-file rbac.json
+
+# HIGH and above only
+matlock k8s rbac --severity HIGH
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--kubeconfig` | (chain) | Path to kubeconfig file |
+| `--severity` | `LOW` | Minimum severity to report |
+| `--output` | `table` | Output format: `table`, `json` |
+| `--output-file` | | Write output to file instead of stdout |
+
+---
+
 ### `matlock secrets scan` — leaked credentials in cloud resources
 
 Scans Lambda environment variables, ECS task definitions, EC2 user data (AWS), Cloud Functions environment, App Service settings (Azure), and similar runtime configuration for embedded secrets — AWS keys, Slack tokens, private keys, GitHub tokens, generic high-entropy strings.

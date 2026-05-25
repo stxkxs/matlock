@@ -57,4 +57,5 @@ func init() {
 	rootCmd.AddCommand(baselineCmd)
 	rootCmd.AddCommand(compareCmd)
 	rootCmd.AddCommand(reportCmd)
+	rootCmd.AddCommand(k8sCmd)
 }
