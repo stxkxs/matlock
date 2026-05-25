@@ -346,6 +346,9 @@ matlock network audit --provider aws --severity CRITICAL
 
 # JSON output
 matlock network audit --output json --output-file network-findings.json
+
+# Generate shell remediation scripts (one per provider) alongside the table
+matlock network audit --fix --out fixes/
 ```
 
 **Flags**
@@ -356,6 +359,35 @@ matlock network audit --output json --output-file network-findings.json
 | `--severity` | `LOW` | Minimum severity to report |
 | `--output` | `table` | Output format: `table`, `json` |
 | `--output-file` | | Write output to file instead of stdout |
+| `--fix` | `false` | Generate shell remediation scripts for each finding |
+| `--out` | `.` | Directory to write fix scripts (used with `--fix`) |
+
+---
+
+### `matlock remediate` — generate fix scripts from a saved scan report
+
+Read a previously-saved JSON scan report and emit shell scripts that remediate each finding. The offline equivalent of `<domain> audit --fix` — useful when you want to review findings first, gate remediation behind code review, or apply a subset by severity.
+
+Supported report types: `storage`, `network`. Reports are read from files written via `--output json --output-file <path>` on the corresponding scan command.
+
+```sh
+# Generate fix scripts from a saved storage scan
+matlock storage audit --output json --output-file storage.json
+matlock remediate --type storage --from storage.json --out fixes/
+
+# Same for network, only CRITICAL findings
+matlock network audit --output json --output-file network.json
+matlock remediate --type network --from network.json --severity CRITICAL --out fixes/
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--type` | (required) | Report type: `storage` or `network` |
+| `--from` | (required) | Path to JSON scan report |
+| `--out` | `.` | Directory to write fix scripts |
+| `--severity` | `LOW` | Minimum severity to include in fix scripts |
 
 ---
 
