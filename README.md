@@ -548,6 +548,30 @@ matlock audit --provider aws --iam-days 30 --cert-days 60 --require-tags owner,e
 | `--cert-days` | `90` | Certificate expiry warning threshold in days |
 | `--require-tags` | | Required tags for tag audit (comma-separated) |
 | `--concurrency` | `10` | Max parallel goroutines for IAM scanning |
+| `--sink` | | Notification sink (repeatable). See **Notification sinks** below. |
+| `--report-url` | | URL embedded in sink notifications (link to full report) |
+
+#### Notification sinks
+
+`matlock audit --sink <spec>` posts a digest of the run to an external system after the scan completes. Sinks fire on a best-effort basis — one bad sink does not block the others, and audit exit code is unaffected. The flag is repeatable, so you can deliver to several destinations at once.
+
+| Spec form | What it does |
+|---|---|
+| `slack:<webhook-url>` | Block Kit message with severity-coded header, per-domain summary, top 10 findings, and optional report link |
+| `webhook:<url>` | POSTs the raw JSON digest to any URL; receivers parse it however they like |
+| `pagerduty:<routing-key>` | PagerDuty Events API v2 trigger — only fires when the digest contains at least one critical or high finding (avoids alert fatigue) |
+
+```sh
+# Post a Slack notification on every audit run
+matlock audit --sink slack:https://hooks.slack.com/services/T00/B00/XXX
+
+# Page on-call AND notify Slack AND forward to a custom collector
+matlock audit \
+  --sink slack:https://hooks.slack.com/services/T00/B00/XXX \
+  --sink pagerduty:my-pd-routing-key \
+  --sink webhook:https://collector.example.com/matlock \
+  --report-url https://reports.example.com/audit-$(date +%F).html
+```
 
 ---
 
