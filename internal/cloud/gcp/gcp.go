@@ -2,15 +2,26 @@ package gcp
 
 import (
 	"context"
+	"fmt"
 	"os"
 
+	"google.golang.org/api/cloudresourcemanager/v1"
+	googleiam "google.golang.org/api/iam/v1"
 	"google.golang.org/api/option"
 )
 
 // Provider implements Matlock provider interfaces for GCP.
+//
+// The GCP Go SDK exposes chained call builders (svc.Projects.GetIamPolicy(...).Context(ctx).Do())
+// that are awkward to mock directly. We hide that behind narrow per-domain
+// interfaces (crmAPI, googleIAMAPI, etc.) declared in their owning files;
+// production code wires adapters that wrap the real services, tests inject
+// mocks satisfying the same interfaces.
 type Provider struct {
 	projectID string
 	opts      []option.ClientOption
+	crm       crmAPI
+	googleIAM googleIAMAPI
 }
 
 // New creates a GCP provider using Application Default Credentials.
@@ -22,7 +33,21 @@ func New(ctx context.Context, projectID string) (*Provider, error) {
 			projectID = os.Getenv("GCLOUD_PROJECT")
 		}
 	}
-	return &Provider{projectID: projectID}, nil
+	p := &Provider{projectID: projectID}
+
+	crmSvc, err := cloudresourcemanager.NewService(ctx, p.opts...)
+	if err != nil {
+		return nil, fmt.Errorf("cloudresourcemanager client: %w", err)
+	}
+	p.crm = &crmAdapter{svc: crmSvc}
+
+	iamSvc, err := googleiam.NewService(ctx, option.WithScopes("https://www.googleapis.com/auth/cloud-platform"))
+	if err != nil {
+		return nil, fmt.Errorf("iam client: %w", err)
+	}
+	p.googleIAM = &googleIAMAdapter{svc: iamSvc}
+
+	return p, nil
 }
 
 // Name returns the provider identifier.
