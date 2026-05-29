@@ -46,7 +46,7 @@ var (
 func init() {
 	k8sCmd.PersistentFlags().StringVar(&k8sKubeconfig, "kubeconfig", "",
 		"path to kubeconfig file (default: $KUBECONFIG or ~/.kube/config, falls back to in-cluster)")
-	k8sCmd.PersistentFlags().StringVar(&k8sOutputFmt, "output", "table", "output format: table, json")
+	k8sCmd.PersistentFlags().StringVar(&k8sOutputFmt, "output", "table", "output format: table, json, sarif")
 	k8sCmd.PersistentFlags().StringVar(&k8sOutputFile, "output-file", "", "write output to file instead of stdout")
 	k8sCmd.PersistentFlags().StringVar(&k8sMinSeverity, "severity", "LOW", "minimum severity to report")
 
@@ -67,6 +67,8 @@ func runK8sRBAC(_ *cobra.Command, _ []string) error {
 
 	findings = filterK8sBySeverity(findings, strings.ToUpper(k8sMinSeverity))
 
+	gate(findings, func(f cloud.K8sFinding) cloud.Severity { return f.Severity })
+
 	w, closer, err := openK8sOutput()
 	if err != nil {
 		return err
@@ -78,6 +80,8 @@ func runK8sRBAC(_ *cobra.Command, _ []string) error {
 	switch strings.ToLower(k8sOutputFmt) {
 	case "json":
 		return output.WriteK8sFindings(w, findings)
+	case "sarif":
+		return output.WriteK8sSARIF(w, findings, Version)
 	default:
 		if !quiet {
 			fmt.Fprintf(os.Stderr, "\nFound %d RBAC findings (context: %s)\n\n", len(findings), p.ContextName())

@@ -7,6 +7,7 @@ import (
 
 	"github.com/nanohype/cloudgov/internal/audit"
 	"github.com/nanohype/cloudgov/internal/cloud"
+	"github.com/nanohype/cloudgov/internal/compliance"
 )
 
 func TestWriteSARIF_StructureValid(t *testing.T) {
@@ -116,10 +117,114 @@ func TestBuildRules_NonEmpty(t *testing.T) {
 		"storage": buildStorageRules,
 		"secrets": buildSecretsRules,
 		"network": buildNetworkRules,
+		"k8s":     buildK8sRules,
+		"lambda":  buildLambdaRules,
+		"drift":   buildDriftRules,
 	} {
 		rules := builder()
 		if len(rules) == 0 {
 			t.Errorf("%s rules should not be empty", name)
 		}
+	}
+}
+
+// decodeSARIF unmarshals a writer's output into the SARIF envelope, asserts the
+// basic shape, and returns the single run's results.
+func decodeSARIF(t *testing.T, b []byte) []sarifResult {
+	t.Helper()
+	var log sarifLog
+	if err := json.Unmarshal(b, &log); err != nil {
+		t.Fatalf("output is not valid SARIF JSON: %v", err)
+	}
+	if log.Version != "2.1.0" {
+		t.Errorf("version = %q, want 2.1.0", log.Version)
+	}
+	if len(log.Runs) != 1 {
+		t.Fatalf("runs = %d, want 1", len(log.Runs))
+	}
+	if log.Runs[0].Tool.Driver.Name != "cloudgov" {
+		t.Errorf("driver name = %q, want cloudgov", log.Runs[0].Tool.Driver.Name)
+	}
+	return log.Runs[0].Results
+}
+
+func TestWriteK8sSARIF(t *testing.T) {
+	findings := []cloud.K8sFinding{
+		{Type: cloud.K8sClusterAdmin, Severity: cloud.SeverityCritical, Detail: "binds cluster-admin"},
+		{Type: cloud.K8sDangerousVerb, Severity: cloud.SeverityMedium, Detail: "delete on *"},
+	}
+	var buf bytes.Buffer
+	if err := WriteK8sSARIF(&buf, findings, "v1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	results := decodeSARIF(t, buf.Bytes())
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2", len(results))
+	}
+	if results[0].Level != "error" {
+		t.Errorf("CRITICAL -> level %q, want error", results[0].Level)
+	}
+	if results[1].Level != "warning" {
+		t.Errorf("MEDIUM -> level %q, want warning", results[1].Level)
+	}
+}
+
+func TestWriteLambdaSARIF(t *testing.T) {
+	findings := []cloud.LambdaPolicyFinding{
+		{Type: cloud.LambdaPublicInvoke, Severity: cloud.SeverityCritical, Detail: "public invoke"},
+	}
+	var buf bytes.Buffer
+	if err := WriteLambdaSARIF(&buf, findings, "v1"); err != nil {
+		t.Fatal(err)
+	}
+	results := decodeSARIF(t, buf.Bytes())
+	if len(results) != 1 || results[0].RuleID != string(cloud.LambdaPublicInvoke) {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+}
+
+func TestWriteComplianceSARIF_OmitsPasses(t *testing.T) {
+	report := compliance.ComplianceReport{
+		Results: []compliance.ControlResult{
+			{Control: compliance.Control{ID: "1.1", Title: "fail one", Severity: cloud.SeverityHigh}, Status: compliance.StatusFail, Detail: "failed"},
+			{Control: compliance.Control{ID: "1.2", Title: "pass one", Severity: cloud.SeverityHigh}, Status: compliance.StatusPass},
+			{Control: compliance.Control{ID: "1.3", Title: "n/a", Severity: cloud.SeverityLow}, Status: compliance.StatusNotEvaluated},
+		},
+	}
+	var buf bytes.Buffer
+	if err := WriteComplianceSARIF(&buf, report, "v1"); err != nil {
+		t.Fatal(err)
+	}
+	results := decodeSARIF(t, buf.Bytes())
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2 (pass omitted)", len(results))
+	}
+	if results[0].Level != "error" {
+		t.Errorf("HIGH fail -> level %q, want error", results[0].Level)
+	}
+	if results[1].Level != "note" {
+		t.Errorf("not-evaluated -> level %q, want note", results[1].Level)
+	}
+}
+
+func TestWriteDriftSARIF_OmitsInSync(t *testing.T) {
+	results := []cloud.DriftResult{
+		{Status: cloud.DriftModified, ResourceName: "aws_security_group.web", Detail: "ingress changed"},
+		{Status: cloud.DriftDeleted, ResourceName: "aws_s3_bucket.logs", Detail: "missing"},
+		{Status: cloud.DriftInSync, ResourceName: "aws_iam_role.app"},
+	}
+	var buf bytes.Buffer
+	if err := WriteDriftSARIF(&buf, results, "v1"); err != nil {
+		t.Fatal(err)
+	}
+	got := decodeSARIF(t, buf.Bytes())
+	if len(got) != 2 {
+		t.Fatalf("results = %d, want 2 (in-sync omitted)", len(got))
+	}
+	if got[0].Level != "warning" {
+		t.Errorf("MODIFIED -> level %q, want warning", got[0].Level)
+	}
+	if got[1].Level != "error" {
+		t.Errorf("DELETED -> level %q, want error", got[1].Level)
 	}
 }

@@ -79,6 +79,14 @@ func runAudit(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
+	var sevs []cloud.Severity
+	for sev, n := range report.Summary.BySeverity {
+		if n > 0 {
+			sevs = append(sevs, cloud.Severity(sev))
+		}
+	}
+	gate(sevs, func(s cloud.Severity) cloud.Severity { return s })
+
 	w := os.Stdout
 	if auditOutputFile != "" {
 		f, err := os.Create(auditOutputFile)

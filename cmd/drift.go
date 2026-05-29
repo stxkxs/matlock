@@ -34,7 +34,7 @@ var (
 func init() {
 	driftCmd.Flags().StringVar(&driftResourceType, "resource-type", "", "filter to a single resource type")
 	driftCmd.Flags().IntVar(&driftConcurrency, "concurrency", 10, "max concurrent API calls")
-	driftCmd.Flags().StringVar(&driftOutputFmt, "output", "table", "output format: table, json")
+	driftCmd.Flags().StringVar(&driftOutputFmt, "output", "table", "output format: table, json, sarif")
 	driftCmd.Flags().StringVar(&driftOutputFile, "output-file", "", "write output to file")
 }
 
@@ -63,6 +63,15 @@ func runDrift(_ *cobra.Command, args []string) error {
 		return err
 	}
 
+	drifted := false
+	for _, r := range results {
+		if r.Status == cloud.DriftModified || r.Status == cloud.DriftDeleted {
+			drifted = true
+			break
+		}
+	}
+	gateBool(drifted)
+
 	w := os.Stdout
 	if driftOutputFile != "" {
 		f, err := os.Create(driftOutputFile)
@@ -76,6 +85,8 @@ func runDrift(_ *cobra.Command, args []string) error {
 	switch strings.ToLower(driftOutputFmt) {
 	case "json":
 		return output.WriteDrift(w, results)
+	case "sarif":
+		return output.WriteDriftSARIF(w, results, Version)
 	default:
 		if !quiet {
 			var modified, deleted, inSync, errored int

@@ -62,6 +62,8 @@ func runTags(_ *cobra.Command, _ []string) error {
 		w = f
 	}
 
+	gate(findings, func(f cloud.TagFinding) cloud.Severity { return f.Severity })
+
 	switch strings.ToLower(tagsOutputFmt) {
 	case "json":
 		return output.WriteTags(w, findings)

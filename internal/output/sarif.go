@@ -6,6 +6,7 @@ import (
 
 	"github.com/nanohype/cloudgov/internal/audit"
 	"github.com/nanohype/cloudgov/internal/cloud"
+	"github.com/nanohype/cloudgov/internal/compliance"
 )
 
 // SARIF 2.1.0 structures (minimal subset for GitHub Advanced Security).
@@ -147,6 +148,186 @@ func WriteSecretsSARIF(w io.Writer, findings []cloud.SecretFinding, version stri
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(log)
+}
+
+// sarifReport assembles a SARIF 2.1.0 log from a tool version, its rules, and
+// results. Shared by the per-domain SARIF writers below.
+func sarifReport(version string, rules []sarifRule, results []sarifResult) sarifLog {
+	return sarifLog{
+		Version: "2.1.0",
+		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+		Runs: []sarifRun{{
+			Tool: sarifTool{Driver: sarifDriver{
+				Name:           "cloudgov",
+				Version:        version,
+				InformationURI: "https://github.com/nanohype/cloudgov",
+				Rules:          rules,
+			}},
+			Results: results,
+		}},
+	}
+}
+
+func encodeSARIF(w io.Writer, log sarifLog) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(log)
+}
+
+// WriteK8sSARIF writes Kubernetes RBAC findings in SARIF 2.1.0 format.
+func WriteK8sSARIF(w io.Writer, findings []cloud.K8sFinding, version string) error {
+	results := make([]sarifResult, 0, len(findings))
+	for _, f := range findings {
+		results = append(results, sarifResult{
+			RuleID:  string(f.Type),
+			Level:   sarifLevel(f.Severity),
+			Message: sarifMessage{Text: f.Detail},
+			Kind:    "open",
+		})
+	}
+	return encodeSARIF(w, sarifReport(version, buildK8sRules(), results))
+}
+
+func buildK8sRules() []sarifRule {
+	types := []struct {
+		id          cloud.K8sFindingType
+		name, level string
+	}{
+		{cloud.K8sClusterAdmin, "ClusterAdmin", "error"},
+		{cloud.K8sWildcardPermission, "WildcardPermission", "error"},
+		{cloud.K8sBindingTooBroad, "BindingTooBroad", "error"},
+		{cloud.K8sDangerousVerb, "DangerousVerb", "warning"},
+	}
+	rules := make([]sarifRule, 0, len(types))
+	for _, t := range types {
+		rules = append(rules, sarifRule{
+			ID:               string(t.id),
+			Name:             t.name,
+			ShortDescription: sarifMessage{Text: t.name},
+			DefaultConfig:    sarifRuleConfig{Level: t.level},
+		})
+	}
+	return rules
+}
+
+// WriteLambdaSARIF writes Lambda resource-policy findings in SARIF 2.1.0 format.
+func WriteLambdaSARIF(w io.Writer, findings []cloud.LambdaPolicyFinding, version string) error {
+	results := make([]sarifResult, 0, len(findings))
+	for _, f := range findings {
+		results = append(results, sarifResult{
+			RuleID:  string(f.Type),
+			Level:   sarifLevel(f.Severity),
+			Message: sarifMessage{Text: f.Detail},
+			Kind:    "open",
+		})
+	}
+	return encodeSARIF(w, sarifReport(version, buildLambdaRules(), results))
+}
+
+func buildLambdaRules() []sarifRule {
+	types := []struct {
+		id          cloud.LambdaPolicyFindingType
+		name, level string
+	}{
+		{cloud.LambdaPublicInvoke, "PublicInvoke", "error"},
+		{cloud.LambdaCrossAccount, "CrossAccountInvoke", "error"},
+		{cloud.LambdaConfusedDeputy, "ConfusedDeputyRisk", "warning"},
+		{cloud.LambdaWildcardAction, "WildcardAction", "warning"},
+	}
+	rules := make([]sarifRule, 0, len(types))
+	for _, t := range types {
+		rules = append(rules, sarifRule{
+			ID:               string(t.id),
+			Name:             t.name,
+			ShortDescription: sarifMessage{Text: t.name},
+			DefaultConfig:    sarifRuleConfig{Level: t.level},
+		})
+	}
+	return rules
+}
+
+// WriteComplianceSARIF writes failed and not-evaluated controls in SARIF 2.1.0
+// format. Passing controls are omitted. Rule level follows each control's
+// severity for failures, "note" for not-evaluated.
+func WriteComplianceSARIF(w io.Writer, report compliance.ComplianceReport, version string) error {
+	var rules []sarifRule
+	var results []sarifResult
+	seen := make(map[string]bool)
+	for _, r := range report.Results {
+		if r.Status == compliance.StatusPass {
+			continue
+		}
+		level := "note"
+		if r.Status == compliance.StatusFail {
+			level = sarifLevel(r.Control.Severity)
+		}
+		if !seen[r.Control.ID] {
+			seen[r.Control.ID] = true
+			rules = append(rules, sarifRule{
+				ID:               r.Control.ID,
+				Name:             r.Control.Title,
+				ShortDescription: sarifMessage{Text: r.Control.Title},
+				DefaultConfig:    sarifRuleConfig{Level: level},
+			})
+		}
+		results = append(results, sarifResult{
+			RuleID:  r.Control.ID,
+			Level:   level,
+			Message: sarifMessage{Text: r.Detail},
+			Kind:    "open",
+		})
+	}
+	return encodeSARIF(w, sarifReport(version, rules, results))
+}
+
+// WriteDriftSARIF writes drifted resources (modified, deleted, or errored) in
+// SARIF 2.1.0 format. In-sync resources are omitted.
+func WriteDriftSARIF(w io.Writer, results []cloud.DriftResult, version string) error {
+	var out []sarifResult
+	for _, r := range results {
+		if r.Status == cloud.DriftInSync {
+			continue
+		}
+		out = append(out, sarifResult{
+			RuleID:  string(r.Status),
+			Level:   driftLevel(r.Status),
+			Message: sarifMessage{Text: r.ResourceName + ": " + r.Detail},
+			Kind:    "open",
+		})
+	}
+	return encodeSARIF(w, sarifReport(version, buildDriftRules(), out))
+}
+
+func buildDriftRules() []sarifRule {
+	types := []struct {
+		id          cloud.DriftStatus
+		name, level string
+	}{
+		{cloud.DriftModified, "Modified", "warning"},
+		{cloud.DriftDeleted, "Deleted", "error"},
+		{cloud.DriftError, "Error", "note"},
+	}
+	rules := make([]sarifRule, 0, len(types))
+	for _, t := range types {
+		rules = append(rules, sarifRule{
+			ID:               string(t.id),
+			Name:             t.name,
+			ShortDescription: sarifMessage{Text: t.name},
+			DefaultConfig:    sarifRuleConfig{Level: t.level},
+		})
+	}
+	return rules
+}
+
+func driftLevel(s cloud.DriftStatus) string {
+	switch s {
+	case cloud.DriftDeleted:
+		return "error"
+	case cloud.DriftModified:
+		return "warning"
+	default:
+		return "note"
+	}
 }
 
 func sarifLevel(s cloud.Severity) string {
