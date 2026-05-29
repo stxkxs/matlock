@@ -115,6 +115,8 @@ func runIAMScan(cmd *cobra.Command, _ []string) error {
 		w = f
 	}
 
+	gate(allFindings, func(f cloud.Finding) cloud.Severity { return f.Severity })
+
 	switch strings.ToLower(iamOutputFmt) {
 	case "json":
 		return output.WriteIAM(w, allFindings, totalPrincipals, allUsedPerms)

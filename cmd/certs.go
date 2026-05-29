@@ -58,6 +58,8 @@ func runCerts(_ *cobra.Command, _ []string) error {
 		w = f
 	}
 
+	gate(findings, func(f cloud.CertFinding) cloud.Severity { return f.Severity })
+
 	switch strings.ToLower(certsOutputFmt) {
 	case "json":
 		return output.WriteCerts(w, findings)

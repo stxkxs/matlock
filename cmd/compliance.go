@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nanohype/cloudgov/internal/cloud"
 	"github.com/nanohype/cloudgov/internal/compliance"
 	"github.com/nanohype/cloudgov/internal/output"
 	"github.com/spf13/cobra"
@@ -38,7 +39,7 @@ func init() {
 	complianceCmd.Flags().StringVar(&complianceNetworkReport, "network-report", "", "path to network audit JSON report")
 	complianceCmd.Flags().StringVar(&complianceCertsReport, "certs-report", "", "path to certs audit JSON report")
 	complianceCmd.Flags().StringVar(&complianceTagsReport, "tags-report", "", "path to tags audit JSON report")
-	complianceCmd.Flags().StringVar(&complianceOutputFmt, "output", "table", "output format: table, json")
+	complianceCmd.Flags().StringVar(&complianceOutputFmt, "output", "table", "output format: table, json, sarif")
 	complianceCmd.Flags().StringVar(&complianceOutputFile, "output-file", "", "write output to file")
 }
 
@@ -89,6 +90,13 @@ func runCompliance(_ *cobra.Command, args []string) error {
 
 	report := compliance.Evaluate(benchmark, input)
 
+	gate(report.Results, func(r compliance.ControlResult) cloud.Severity {
+		if r.Status == compliance.StatusFail {
+			return r.Control.Severity
+		}
+		return cloud.SeverityInfo
+	})
+
 	w := os.Stdout
 	if complianceOutputFile != "" {
 		f, err := os.Create(complianceOutputFile)
@@ -102,6 +110,8 @@ func runCompliance(_ *cobra.Command, args []string) error {
 	switch strings.ToLower(complianceOutputFmt) {
 	case "json":
 		return output.WriteCompliance(w, report)
+	case "sarif":
+		return output.WriteComplianceSARIF(w, report, Version)
 	default:
 		if !quiet {
 			fmt.Fprintf(os.Stderr, "\n%s: %d controls evaluated\n\n", benchmark.Name, report.Summary.Total)

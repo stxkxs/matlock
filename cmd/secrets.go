@@ -62,6 +62,8 @@ func runSecretsScan(_ *cobra.Command, _ []string) error {
 		w = f
 	}
 
+	gate(findings, func(f cloud.SecretFinding) cloud.Severity { return f.Severity })
+
 	switch strings.ToLower(secretsOutputFmt) {
 	case "json":
 		return output.WriteSecrets(w, findings)

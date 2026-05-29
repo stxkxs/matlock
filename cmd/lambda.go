@@ -46,7 +46,7 @@ var (
 
 func init() {
 	lambdaAuditCmd.Flags().StringVar(&lambdaSeverity, "severity", "LOW", "minimum severity to report")
-	lambdaAuditCmd.Flags().StringVar(&lambdaOutputFmt, "output", "table", "output format: table, json")
+	lambdaAuditCmd.Flags().StringVar(&lambdaOutputFmt, "output", "table", "output format: table, json, sarif")
 	lambdaAuditCmd.Flags().StringVar(&lambdaOutputFile, "output-file", "", "write output to file")
 
 	lambdaCmd.AddCommand(lambdaAuditCmd)
@@ -69,6 +69,8 @@ func runLambdaAudit(_ *cobra.Command, _ []string) error {
 
 	allFindings = filterLambdaBySeverity(allFindings, cloud.Severity(strings.ToUpper(lambdaSeverity)))
 
+	gate(allFindings, func(f cloud.LambdaPolicyFinding) cloud.Severity { return f.Severity })
+
 	w := os.Stdout
 	if lambdaOutputFile != "" {
 		f, err := os.Create(lambdaOutputFile)
@@ -82,6 +84,8 @@ func runLambdaAudit(_ *cobra.Command, _ []string) error {
 	switch strings.ToLower(lambdaOutputFmt) {
 	case "json":
 		return output.WriteLambdaPolicy(w, allFindings)
+	case "sarif":
+		return output.WriteLambdaSARIF(w, allFindings, Version)
 	default:
 		if !quiet {
 			fmt.Fprintf(os.Stderr, "\nFound %d Lambda policy findings\n\n", len(allFindings))

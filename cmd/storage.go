@@ -66,6 +66,8 @@ func runStorageAudit(_ *cobra.Command, _ []string) error {
 		w = f
 	}
 
+	gate(findings, func(f cloud.BucketFinding) cloud.Severity { return f.Severity })
+
 	switch strings.ToLower(storageOutputFmt) {
 	case "json":
 		return output.WriteStorage(w, findings)

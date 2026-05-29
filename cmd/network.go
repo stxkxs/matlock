@@ -66,6 +66,8 @@ func runNetworkAudit(_ *cobra.Command, _ []string) error {
 		w = f
 	}
 
+	gate(findings, func(f cloud.NetworkFinding) cloud.Severity { return f.Severity })
+
 	switch strings.ToLower(networkOutputFmt) {
 	case "json":
 		if err := output.WriteNetwork(w, findings); err != nil {
